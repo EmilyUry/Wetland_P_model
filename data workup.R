@@ -55,7 +55,7 @@ summary_select <- flows.combine %>%
   select(Wetland_ID, Water_year, Month,   Day, Date, 
          Precip,   Qin,  Qout,  TPin,  TPout,  SRPin, SRPout,  TNin, TNout, NO3in, NO3out)
 
-##write.csv(summary_select, "DU_summary_select.csv")
+write.csv(summary_select, "DU_summary_select.csv")
 
 
 flow.select <- flows.combine %>%
