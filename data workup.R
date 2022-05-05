@@ -34,7 +34,7 @@ flows.combine <- x %>%
                               TN_kg_day, TDN_kg_day, PN_kg_day, DIN_kg_day)) %>%
   rowwise() %>%
   mutate(Precip = Flow_volume_m3_day_Inflow_Precipitation) %>%
-  mutate(Qin = sum(Flow_volume_m3_day_Inflow_Inlet, Flow_volume_m3_day_Inflow_Inlet, Flow_volume_m3_day_Inflow_Surface, 
+  mutate(Qin = sum(Flow_volume_m3_day_Inflow_Inlet, Flow_volume_m3_day_Inflow_Tile, Flow_volume_m3_day_Inflow_Surface, 
                       Flow_volume_m3_day_Inflow_Precipitation, na.rm = TRUE)) %>%
   mutate(Qout = sum(Flow_volume_m3_day_Outflow, Flow_volume_m3_day_Outflow_Leak, na.rm = TRUE)) %>%
   mutate(TPin = sum(TP_kg_day_Inflow_Inlet, TP_kg_day_Inflow_Tile, TP_kg_day_Inflow_Surface,
@@ -58,18 +58,22 @@ summary_select <- flows.combine %>%
 ##write.csv(summary_select, "DU_summary_select.csv")
 
 
-
-
 flow.select <- flows.combine %>%
   select(Wetland_ID, Water_year, Month,   Day, Date, 
-         Precip,   Qin,  Qout) %>%
-  pivot_wider(names_from = Wetland_ID, values_from = c(Qin, Qout)) %>%
-  select(Water_year, Month,   Day, Date, 
-         Precip,   Qin_OH,  Qout_OH, Qin_LL, Qout_LL, Qin_MO,  Qout_MO, Qin_KE, Qout_KE, 
-         Qin_MA,  Qout_MA, Qin_FE, Qout_FE, Qin_DY,  Qout_DY, Qin_BL, Qout_BL)
-  
-  
-head(flow.select)
+         Precip,   Qin,  Qout)  %>%
+  pivot_wider(names_from = Wetland_ID, values_from = c(Precip, Qin, Qout)) # %>%
+
+write.csv(flow.select, "Water_balance_data.csv")
+
+
+
+
+
+
+
+
+
+
 
 
 ### calcualte mass removal, percent removal and concentration (mg/L)
