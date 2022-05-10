@@ -1,8 +1,5 @@
 
 
-
-
-
 #' ---
 #' title: "Water balance calculations"
 #' author: "Emily Ury"
@@ -11,7 +8,7 @@
 #' 
 
 
-setwd("C:/Users/Emily Ury/OneDrive - University of Waterloo/Wetlands_local/Wetland_P_model_data")
+#setwd("C:/Users/Emily Ury/OneDrive - University of Waterloo/Wetlands_local/Wetland_P_model_data")
 setwd("C:/Users/uryem/OneDrive - University of Waterloo/Wetlands_local/Wetland_P_model_data")
 
 
@@ -41,7 +38,8 @@ info <- read.csv("Wetland_Info.csv") %>%
 
 ## Join everything together and calculate ET over wetland area 
 data <- read.csv("DU_summary_select.csv") %>%
-  select("Wetland_ID", "Water_year", "Month", "Day", "Date", "Precip", "Qin", "Qout") %>%
+  select("Wetland_ID", "Water_year", "Month", "Day", "Date", "Precip", "Qin", "Qout", 
+         "TPin", "TPout", "SRPin", "SRPout" ) %>%
   left_join(info, by = "Wetland_ID") %>%
   left_join(WB, by = c("Date", "Month", "Water_year")) %>%
   mutate(PET_m3_day = PET_mm_day/1000*Area_m2*10000) %>%
@@ -59,31 +57,26 @@ data <- read.csv("DU_summary_select.csv") %>%
 
 
 
-
-
 ## calculating DV/DT for OH only
 
 
 OH19 <- data %>%
   filter(Wetland_ID == "OH") %>%
   filter(Water_year == 2019)
-plot(OH19$Date, OH19$AET_m3_day, type = "l",
-     xlab = "date", ylab = "ET (m3/day)")
-points(OH19$Date, OH19$PET_m3_day, type = "l", col = "red")
-points(OH19$Date, OH19$Dummy_ET, type = "l", col = "blue")
+# plot(OH19$Date, OH19$AET_m3_day, type = "l",
+#      xlab = "date", ylab = "ET (m3/day)")
+# points(OH19$Date, OH19$PET_m3_day, type = "l", col = "red")
+# points(OH19$Date, OH19$Dummy_ET, type = "l", col = "blue")
+# legend("topleft", c("B-C approx", "TerraClimate", "Dummy data"), lty = 1, col = c("red", "black", "blue"))
 
-legend("topleft", c("B-C approx", "TerraClimate", "Dummy data"), lty = 1, col = c("black", "red", "blue"))
-
-  
 
 Qin <- OH19$Qin
 Qout <- OH19$Qout
 ET  <- OH19$Dummy_ET
-#ET <- OH19$PET_m3_day
 ET[is.na(ET)] <- 0   ## replace NA with zero
 dt <- 1
-V <- rep(0, length(Qin))
-V[1] <- OH19$Vol_m3[1]
+V <- rep(0, length(Qin))  # makes a vector of all zeros
+V[1] <- OH19$Vol_m3[1]    # replace the first zero w volume at T1
 
 for(t in 2:length(Qin)) {
   V[t] <- V[t-1] + (Qin[t-1] - Qout[t-1] - ET[t-1])*dt
@@ -95,6 +88,57 @@ plot(OH19$Date, dVdt, type = 'l')
 
 OH19$V_calc <- V
 OH19$dVdt <- dVdt
+
+
+################################################################ ^save
+
+
+
+
+
+
+#### writing a function to calculate V and dV/dt
+#Vint <- rep(info$Vol_m3,each = 2)
+
+V.calc <- function(x) {
+  V <- rep(0, length(Qin))
+  V[1] <- x$Vol_m3[1]
+  for(t in 2:length(Qin)) {
+    V[t] <- V[t-1] + (Qin[t-1] - Qout[t-1] - ET[t-1])*dt
+  }
+V}
+
+OH19$Vcalc_m3 <- V.calc(OH19)
+
+
+
+
+OH19$dVdt <- c(0, (V[2:length(V)] - V[1:(length(V)-1)]))
+output
+
+
+data$Wetland_year <- paste(data$Wetland_ID, data$Water_year, sep = "")
+array <- split(data, f = data$Wetland_year)
+
+
+array$BL2019$Vcalc_m3 <- V.calc(array$BL2019)
+
+dVdt <- c(0, (V[2:length(V)] - V[1:(length(V)-1)]))  #m3/day
+
+
+
+tapply(OH.Q, 1, V.calc)
+
+
+
+
+
+
+
+########## calculate  change in C over time (for just one wetland-year)
+
+
+
 
 
 
