@@ -45,20 +45,15 @@ data <- read.csv("DU_summary_select.csv") %>%
   mutate(PET_m3_day = PET_mm_day/1000*Area_m2*10000) %>%
   mutate(AET_m3_day = AET_mm_day/1000*Area_m2*10000) %>%
   mutate(Dummy_ET = PET_m3_day/5) %>%
-  mutate(Date = as.Date(Date))
+  mutate(Date = as.Date(Date)) %>%
+  mutate(Site_year = paste(Wetland_ID, Water_year, sep = ""))
 
-
-
-
-
-
-
-
+rm(pValue); rm(WB); rm(ET); rm(info)
 
 
 
 ## calculating DV/DT for OH only
-
+#{
 
 OH19 <- data %>%
   filter(Wetland_ID == "OH") %>%
@@ -88,19 +83,27 @@ plot(OH19$Date, dVdt, type = 'l')
 
 OH19$V_calc <- V
 OH19$dVdt <- dVdt
-
+}
 
 ################################################################ ^save
 
 
 
-
-
-
 #### writing a function to calculate V and dV/dt
-#Vint <- rep(info$Vol_m3,each = 2)
 
+Site_year <- unique(data$Site_year)
+df <- data[which(data$Site_year == Site_year[1]),]
+
+
+##### create a function for calculating Volume at the daily timestep
 V.calc <- function(x) {
+  Qin <- x$Qin
+  Qout <- x$Qout
+  ET  <- x$Dummy_ET
+  ET[is.na(ET)] <- 0   ## replace NA with zero
+  dt <- 1
+  V <- rep(0, length(Qin))  # makes a vector of all zeros
+  V[1] <- x$Vol_m3[1]
   V <- rep(0, length(Qin))
   V[1] <- x$Vol_m3[1]
   for(t in 2:length(Qin)) {
@@ -108,9 +111,62 @@ V.calc <- function(x) {
   }
 V}
 
+V <- V.calc(df)
+df$Vcalc_m3 <- V
+df$dVdt <- c(0, (V[2:length(V)] - V[1:(length(V)-1)]))
+
+
+
+### apply function over the full data set
+output <- list()
+for(i in 1:16){
+  df <- data[which(data$Site_year == Site_year[i]),]
+  V <- V.calc(df)
+  df$Vcalc_m3 <- V
+  df$dVdt <- c(0, (V[2:length(V)] - V[1:(length(V)-1)]))
+  tmp <- df
+  output[[i]] <- tmp
+  }
+new <- do.call("rbind", output)
+
+
+### plot the wetland volumes for all Site-years
+ggplot(new, (aes( x = Date, y = Vcalc_m3))) +
+  geom_line()+
+  facet_wrap(.~Site_year, scales = "free" )
+  
+
+
+
+#### START HERE with Concentration prediction
+
+
+
+
+
+
+
+
+
+
+
+#Vint <- rep(info$Vol_m3,each = 2)
+
+df$new <- "cheese"
+
+for(i in 1:16){
+  df[i] <- as.data.frame(array[i])
+  df$new <- "cheese"
+}
 OH19$Vcalc_m3 <- V.calc(OH19)
 
+tapply(data, data$Site_year, V.calc)
 
+
+
+
+
+array <- split(data, f = data$Site_year)
 
 
 OH19$dVdt <- c(0, (V[2:length(V)] - V[1:(length(V)-1)]))
@@ -118,16 +174,41 @@ output
 
 
 data$Wetland_year <- paste(data$Wetland_ID, data$Water_year, sep = "")
-array <- split(data, f = data$Wetland_year)
+array <- split(data, f = data$Site_year)
+
+vec <- c(as.data.frame(array[1]), as.data.frame(array[2]))
+text <- as.data.frame(array[1])
+
+Site_years <- unique(data$Wetland_year)
+
+for (i in 1:length(Site_years)) {
+  df <- as.data.frame(array[i])
+  
+  Qin <- df[,7]
+  Qout <- df[,8]
+  ET  <- df[,21]
+  ET[is.na(ET)] <- 0   ## replace NA with zero
+  dt <- 1
+  V <- rep(0, length(Qin))  # makes a vector of all zeros
+  V[1] <- df[1,14]    # replace the first zero w volume at T1
+  
+  for(t in 2:length(Qin)) {
+    V[t] <- V[t-1] + (Qin[t-1] - Qout[t-1] - ET[t-1])*dt
+  }
+  df$Vcalc_m3 <- V
+  df$dVdt <- c(0, (V[2:length(V)] - V[1:(length(V)-1)]))  #m3/day
+}
 
 
+
+###
 array$BL2019$Vcalc_m3 <- V.calc(array$BL2019)
 
 dVdt <- c(0, (V[2:length(V)] - V[1:(length(V)-1)]))  #m3/day
 
 
 
-tapply(OH.Q, 1, V.calc)
+
 
 
 
