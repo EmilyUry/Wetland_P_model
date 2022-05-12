@@ -8,12 +8,13 @@
 #' 
 
 
-#setwd("C:/Users/Emily Ury/OneDrive - University of Waterloo/Wetlands_local/Wetland_P_model_data")
-setwd("C:/Users/uryem/OneDrive - University of Waterloo/Wetlands_local/Wetland_P_model_data")
+setwd("C:/Users/Emily Ury/OneDrive - University of Waterloo/Wetlands_local/Wetland_P_model_data")
+#setwd("C:/Users/uryem/OneDrive - University of Waterloo/Wetlands_local/Wetland_P_model_data")
 
 
 library(tidyverse)
 
+options(scipen=999)
 
 
 ## Call in Temp and calculate ET using the Blaney-Criddle eqauation
@@ -134,13 +135,157 @@ ggplot(data2, (aes( x = Date, y = dVdt))) +
   facet_wrap(.~Site_year, scales = "free" )
 
 
-#### START HERE with Concentration prediction
+
+
+
+
+###### Residence Time calculation for all site-years
+
+RTdata <- data2 %>%
+  select(c("Site_year", "Qin", "Vcalc_m3")) %>%
+  mutate(Site_year = as.factor(Site_year)) %>%
+  mutate(tau = data2$Vcalc_m3/data2$Qin) ## Add residence time column
+RTdata$tau[is.infinite(RTdata$tau)] <- 0 ## Assign value of 0 to inf values
+
+
+RT.summary <- RTdata %>%
+  group_by(Site_year) %>%
+  summarise(Avg_Tau = mean(tau)) ## Summarize residence time by averages for each site-year
+
+
+####  CALCULATING dC/dt
+##### 
+df <- data2 %>%
+  mutate(TP_Cin = TPin/Qin) %>%
+  mutate(TP_Cout = TPout/Qout)
+df$TP_Cin[is.nan(df$TP_Cin)] <- 0
+df$TP_Cout[is.nan(df$TP_Cout)] <- 0
+
+Site_year <- unique(df$Site_year) ## create a vector of Site-year names
+output <- list()
+for(i in 1:16){
+  df2 <- df[which(df$Site_year == Site_year[i]),]
+  df2$dCdt <- c(0, (df2$TP_Cout[2:length(df2$TP_Cout)] - df2$TP_Cout[1:(length(df2$TP_Cout)-1)])) 
+  output[[i]] <- df2
+}
+df3 <- do.call("rbind", output)  ## combine dataframes for each site-year back into one dataframe
+
+
+df3$dCdt[!is.finite(df3$dCdt)] <- 0
+df3$TP_Cin[!is.finite(df3$TP_Cin)] <- 0
+df3$TP_Cout[!is.finite(df3$TP_Cout)] <- 0
+
+
+###### Calculate K at the Daily and Monthly timestep
+
+df3 <- df3 %>%
+  mutate(K = Qin*TP_Cin/Vcalc_m3 - Qout*Vcalc_m3 - dCdt/TP_Cout)
+
+Kmonth <- df3 %>%
+  group_by(Site_year, Month) %>%
+  summarise(Kmonth = mean(K))
+
+df3 <- df3 %>%
+  left_join(Kmonth)
+
+
+####### calculate predicted values for Cout
 
 
 
 
 
 
+
+
+
+
+
+
+
+
+V.calc <- function(df) {
+  Cout <- df$TP_Cout
+  dt <- 1
+  C <- rep(0, length(Cout))  # makes a vector of all zeros
+  C[1] <- x$Vol_m3[1]
+  V <- rep(0, length(Qin))
+  V[1] <- x$Vol_m3[1]
+  for(t in 2:length(Qin)) {
+    V[t] <- V[t-1] + (Qin[t-1] - Qout[t-1] - ET[t-1])*dt
+  }
+  V}
+
+
+
+conc_func <- function() {
+  inflow <-  data2_conc$Qin  # Inflow, [L3/T]
+  C_in_TP <- data2_conc$TP_Cin_kg_m3
+  
+  outflow <-  rep(0,length(inflow))
+  
+  dCTPdt <-  rep(0,length(outflow))
+  Cw_TP <-  rep(0,length(outflow))
+  # Initial conditions
+  Cw_TP[1,1] <-  ICs[1,1]
+  # 4. Run Model ============================================================
+  for (i in 1:(RunWindow[2]-1)){
+    if (i > 1) {
+      dVdt[i,1] <-  ModelV[i,1] - ModelV[i-1]
+    }
+    # 4a. TP Equations ---------------------------------------------------
+    C_in_TP[i,1] <-  10^(log10(inflow[i,1]/24/3600)*0.7185094 - 0.7199449)
+    dCTPdt[i,1] <-  inflow[i,1] * C_in_TP[i,1] / ModelV[i,1]
+    - outflow[i,1]* C_TP[i,1]   / ModelV[i,1]
+    - k_uptake * C_TP[i,1]
+    - dVdt[i,1] * C_TP[i,1] / ModelV[i,1]
+    C_TP[i+1,1] <-  max(0, C_TP[i,1] + dCTPdt[i,1])
+  
+} }
+
+
+conc_func <-  function(wetland_num, Wetland_data, k_uptake, alpha, ICs, RunWindow, plotWindow) {
+  ## 1. Load data (will read from .mat files eventually) =====================
+  data_site_yr <-  Wetland_data$Site_year # Site-year
+  ModelV <-  Wetland_data$Vol_m3       # Modeled wetland volume, [L3]
+  ET_data <-  Wetland_data$Dummy_ET        # Evapotranspiration, [L3/T]
+  inflow <-  Wetland_data$Qin        # Inflow, [L3/T]
+  # outflow <- Wetland_Q(:,3)        # Storm outflow,[L3/T]
+  outflow <-  rep(0,length(inflow))  # Estimated outflow by difference
+  
+  for (i in 2:length(inflow)){
+    outflow[i,1] <-  inflow[i,1] - ET_data[i,1] - (ModelV[i,1] - ModelV[i-1,1])
+    outflow[i,1] <-  max(0, outflow[i,1])
+    ModelV[i,1] <-  max(50, ModelV[i,1])
+  }
+  
+  
+  ## 2. Initialize Vectors ===================================================
+  dVdt <-  rep(0,length(outflow))
+  dCTPdt <-  rep(0,length(outflow))
+  C_in_TP <- rep(0,length(outflow))
+  C_TP <-  rep(0,length(outflow))
+  # Initial conditions
+  C_TP[1,1] <-  ICs[1,1]
+  # 4. Run Model ============================================================
+  for (i in 1:(RunWindow[2]-1)){
+    if (i > 1) {
+      dVdt[i,1] <-  ModelV[i,1] - ModelV[i-1]
+    }
+    # 4a. TP Equations ---------------------------------------------------
+    C_in_TP[i,1] <-  10^(log10(inflow[i,1]/24/3600)*0.7185094 - 0.7199449)
+    dCTPdt[i,1] <-  inflow[i,1] * C_in_TP[i,1] / ModelV[i,1]
+    - outflow[i,1]* C_TP[i,1]   / ModelV[i,1]
+    - k_uptake * C_TP[i,1]
+    - dVdt[i,1] * C_TP[i,1] / ModelV[i,1]
+    C_TP[i+1,1] <-  max(0, C_TP[i,1] + dCTPdt[i,1])
+  }
+  conc_func <- c(ModelV, C_TP)
+}
+
+
+
+conc_TP <- conc_func(data2_conc$Site_year, data2_conc, k_uptake, ICs, RunWindow, plotWindow)
 
 
 
